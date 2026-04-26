@@ -36,7 +36,19 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+// Khai báo cho trình biên dịch C++ biết các biến này tồn tại ở file .c
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
+extern TIM_HandleTypeDef htim10; // Giả sử Huy dùng TIM10 cho PID
+
+#ifdef __cplusplus
+}
+#endif
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

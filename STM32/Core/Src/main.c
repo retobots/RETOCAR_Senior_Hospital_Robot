@@ -19,15 +19,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
-#include "motor.hpp"
-#include "Encoder.hpp"
-#include "Pid.hpp"
-#include "robotcontroller.hpp"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#define PCA9685_MODE1 0x00
-#define PCA9685_PRESCALE 0xFE
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,31 +42,20 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+
 I2C_HandleTypeDef hi2c1;
+
 SPI_HandleTypeDef hspi1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim10;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-// uint8_t pca_addr = 0xAA;
-// HAL_StatusTypeDef test_status;
-// uint32_t encoder1_count = 0 ;
-// uint32_t encoder2_count = 0 ;
-// uint8_t btn_rst = 1;
-// uint8_t btn_conf = 1;
-volatile int32_t debug_deltaL = 0;
-volatile int32_t debug_deltaR = 0;
-volatile int32_t total_pulseL = 0; // Biến giữ tổng số xung
-volatile int32_t total_pulseR = 0;
 
-volatile float actual_velocityL = 0.0f, actual_velocityR = 0.0f; // Vận tốc thực tế tính từ encoder
-volatile float final_target_left = 0.0f, final_target_right = 0.0f; // Biến mục tiêu cuối cùng sau khi áp dụng giới hạn gia tốc
-volatile float current_target_left = 0.0f, current_target_right = 0.0f; 
-volatile float filtered_actualL = 0.0f, filtered_actualR = 0.0f; // Biến lưu giá trị thực tế đã qua lọc
-RobotController myRobot;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -83,53 +67,14 @@ static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
-static void MX_TIM10_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM10_Init(void);
 /* USER CODE BEGIN PFP */
-// void TFT_WriteCommand(uint8_t cmd);
-// void TFT_WriteData(uint8_t data);
-// void PCA9685_Init_50Hz(void);
-//void PCA9685_SetServoAngle(uint8_t channel, uint16_t value);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// void PCA9685_Init_50Hz(void) {
-//     uint8_t data;
-
-//     // 1. Reset chip hoàn toàn
-//     data = 0x80;
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0x00, 1, &data, 1, 100);
-//     HAL_Delay(50);
-
-//     // 2. Cho chip ngủ để cài Prescale
-//     data = 0x10;
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0x00, 1, &data, 1, 100);
-
-//     // 3. Cài 50Hz (Prescale = 121)
-//     data = 121;
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0xFE, 1, &data, 1, 100);
-
-//     // 4. Thức dậy và cho phép Restart
-//     data = 0xA1; // 0xA1 = 1010 0001 (Restart + Auto-Increment + AllCall)
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0x00, 1, &data, 1, 100);
-//     HAL_Delay(5);
-// }
-
-// void PCA9685_SetServoAngle(uint8_t channel, uint16_t value) {
-//     // channel: 0 đến 15
-//     // value: 102 (0 độ) đến 512 (180 độ)
-
-//     uint8_t buf[4];
-//     buf[0] = 0x00; // ON Low (Bật ở vạch 0)
-//     buf[1] = 0x00; // ON High
-//     buf[2] = value & 0xFF; // OFF Low (Tắt ở vạch 'value')
-//     buf[3] = value >> 8;   // OFF High
-
-//     // Ghi vào địa chỉ thanh ghi của chân tương ứng
-//     // Công thức: 0x06 (LED0) + 4 * số kênh
-//     HAL_I2C_Mem_Write(&hi2c1,(0x40 << 1), 0x06 + (4 * channel), 1, buf, 4, 100);
-// }
 
 /* USER CODE END 0 */
 
@@ -141,6 +86,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -167,156 +113,11 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
-  MX_TIM10_Init();
   MX_USB_DEVICE_Init();
   MX_USART2_UART_Init();
+  MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL); // Bắt đầu Encoder R
-  HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL); // Bắt đầu Encoder L
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 
-    // Đọc địa chỉ I2C
-//    for (uint16_t i = 0; i < 128; i++) {
-//         test_status = HAL_I2C_IsDeviceReady(&hi2c1, (i << 1), 3, 10);
-//         if (test_status == HAL_OK) {
-//             pca_addr = i;
-//         }
-//     }
-
-//    PCA9685_SetServoAngle(0, 512);
-//    PCA9685_SetServoAngle(1, 512);
-//    PCA9685_SetServoAngle(2, 512);
-//    PCA9685_SetServoAngle(3, 512);
-//    HAL_Delay(2000);
-//    PCA9685_SetServoAngle(0, 307);
-//    PCA9685_SetServoAngle(1, 307);
-//    PCA9685_SetServoAngle(2, 307);
-//    PCA9685_SetServoAngle(3, 307);
-//    HAL_Delay(2000);
-//    PCA9685_SetServoAngle(0, 102);
-//    PCA9685_SetServoAngle(1, 102);
-//    PCA9685_SetServoAngle(2, 102);
-//    PCA9685_SetServoAngle(3, 102);
-   // Đọc encoder
-    // encoder1_count = (uint32_t)__HAL_TIM_GET_COUNTER(&htim1);
-    // encoder2_count = __HAL_TIM_GET_COUNTER(&htim4);
-
-
-     //2. Thiết lập hướng quay TIẾN cho cả 2 động cơ
-     //Động cơ A (PB12, PB13)
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
-    // Động cơ B (PB14, PB15)
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
-
-    // 3. Vòng lặp tăng tốc dần từ 0% đến 100% (mỗi bước 10%)
-//    for (int i = 0; i <= 10; i++) {
-//        uint32_t duty_value = (i * 65535) / 10; // Tính toán giá trị PWM
-
-//        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 65535);
-        //__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 65535);
-//
-//        //HAL_Delay(1000); // Đợi 1 giây ở mỗi mức tốc độ
-//    //}
-//
-    // 4. Giữ tốc độ tối đa trong 2 giây
-//    HAL_Delay(5000);
-//
-//    // 5. DỪNG HẲN CẢ 2 ĐỘNG CƠ
-//    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
-//    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
-//
-//    // Đưa tất cả chân hướng về 0 (Thả trôi bánh xe)
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
-//
-//    // Tắt PWM để tiết kiệm năng lượng
-//    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-//    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
-
-    // Test màn hình
-    /* USER CODE BEGIN 2 */
-    // HAL_Delay(500);
-
-    //     // Đảm bảo các chân ở trạng thái nghỉ
-    //     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, 1); // CS = 1 (Tạm ngắt)
-    //     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 1);  // RES = 1
-    //     HAL_Delay(100);
-
-    //     // Bắt đầu quy trình Reset cứng
-    //     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 0); // RES = 0 (Bắt đầu Reset)
-    //     HAL_Delay(200);                          // Giữ 200ms cho chắc
-    //     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 1); // RES = 1 (Thả Reset)
-    //     HAL_Delay(200);                          // Đợi chip màn hình ổn định
-
-    //     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, 0); // Bây giờ mới CS = 0 để làm việc
-
-    //     // Gửi lệnh Software Reset để "làm sạch" nội bộ màn hình
-    //     TFT_WriteCommand(0x01);
-    //     HAL_Delay(150);
-
-    // TFT_WriteCommand(0x11); // Exit Sleep
-    // HAL_Delay(200);
-
-    // // Thiết lập chế độ màu 16-bit (5-6-5)
-    // TFT_WriteCommand(0x3A);
-    // TFT_WriteData(0x05);
-
-    // // Cấu hình hướng quét (Quan trọng để không bị sọc)
-    // TFT_WriteCommand(0x36);
-    // TFT_WriteData(0xC0);
-
-    // // Bật màn hình
-    // TFT_WriteCommand(0x29);
-    // HAL_Delay(100);
-
-    // // 3. XÓA NHIỄU - Đổ màu đỏ toàn màn hình
-    // TFT_WriteCommand(0x2A); // Column addr
-    // TFT_WriteData(0x00); TFT_WriteData(0x00);
-    // TFT_WriteData(0x00); TFT_WriteData(0x9F); // 127
-
-    // TFT_WriteCommand(0x2B); // Row addr
-    // TFT_WriteData(0x00); TFT_WriteData(0x00);
-    // TFT_WriteData(0x00); TFT_WriteData(0x9F); // 159
-
-    // TFT_WriteCommand(0x2C);
-
-    //     // Nửa trên: Xanh lá
-    //     for (int i = 0; i < 10240; i++) { // 10240 là một nửa của 20480
-    //         TFT_WriteData(0x07);
-    //         TFT_WriteData(0xE0);
-    //     }
-
-    //     // Nửa dưới: Đỏ
-    //     for (int i = 0; i < 10240; i++) {
-    //         TFT_WriteData(0xF8);
-    //         TFT_WriteData(0x00);
-  
-//  MotorL.setVelocity(10.0f); // Tăng tốc độ động cơ trái
-//  MotorR.setVelocity(10.0f); // Tăng tốc độ động cơ phải
-//  HAL_Delay(5000);// Chạy trong 2 giây
-//  MotorL.setVelocity(0.0f); // Dừng động cơ trái
-//  MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(-10.0f); // Quay ngược động cơ trái
-  // MotorR.setVelocity(-10.5f); // Quay ngược động cơ phải
-  // HAL_Delay(2000); // Chạy ngược trong 2 giây
-  // MotorL.setVelocity(0.0f); // Dừng động cơ trái
-  // MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(10.0f); // Tăng tốc độ động cơ trái
-  // MotorR.setVelocity(-10.5f); // Quay ngược động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(0.0f); // Dừng động cơ trái
-  // MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(-10.0f); // Tăng tốc độ động cơ trái
-  // MotorR.setVelocity(10.5f); // Quay ngược động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(0.0f); // Dừng động cơ trái
-  // MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  HAL_TIM_Base_Start_IT(&htim10); // Bật ngắt định kỳ 20ms để đọc encoder và điều khiển PID
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -326,19 +127,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  char *usb_msg = "STM32 USB OK!\r\n";
-//	  CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg)); // Giao tiếp USB
-      // debug_deltaL = EncoderL.update();
-      // debug_deltaR = EncoderR.update();
-      // total_pulseL += debug_deltaL;
-      // total_pulseR += debug_deltaR;
-      // HAL_Delay(20); // Nghỉ 10ms để xung kịp tăng lên
-    myRobot.setTargetVelocities(20.0f, 20.0f); // Đặt mục tiêu vận tốc cho robot (ví dụ: 15 rad/s cho cả 2 bánh)
-    HAL_Delay(100);
   }
-}
   /* USER CODE END 3 */
-
+}
 
 /**
   * @brief System Clock Configuration
@@ -662,11 +453,10 @@ static void MX_TIM4_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
+  * @brief TIM10 Initialization Function
   * @param None
   * @retval None
   */
-
 static void MX_TIM10_Init(void)
 {
 
@@ -692,6 +482,12 @@ static void MX_TIM10_Init(void)
   /* USER CODE END TIM10_Init 2 */
 
 }
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_USART2_UART_Init(void)
 {
 
@@ -770,14 +566,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-extern "C" void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM10) {
-      myRobot.update(); // Gọi hàm cập nhật điều khiển robot mỗi 20ms
-      debug_deltaL = myRobot.getFilteredVelocityL(); // Lấy giá trị thực tế đã qua lọc để debug
-      debug_deltaR = myRobot.getFilteredVelocityR();
 
-    }
-}
 /* USER CODE END 4 */
 
 /**
